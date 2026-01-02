@@ -1,6 +1,7 @@
 import typer
 from rich.console import Console
 from pathlib import Path
+from opspilot.agents.planner import plan
 
 from opspilot.state import AgentState
 from opspilot.config import load_config
@@ -50,3 +51,14 @@ def analyze():
     console.print(f"• Docker config: {bool(state.context['docker'])}")
     console.print(
         f"• Dependencies detected: {len(state.context['dependencies'])}")
+
+    console.print("[cyan]🧠 Planner Agent reasoning...[/cyan]")
+
+    plan_result = plan(state.context)
+
+    state.hypothesis = plan_result.get("hypothesis")
+    state.confidence = plan_result.get("confidence")
+    state.checks_remaining = plan_result.get("required_checks", [])
+
+    console.print("[bold yellow]Hypothesis:[/bold yellow]", state.hypothesis)
+    console.print("[bold yellow]Confidence:[/bold yellow]", state.confidence)
