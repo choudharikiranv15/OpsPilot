@@ -165,13 +165,13 @@ class MissingConfigError(ConfigurationError):
         super().__init__(f"Missing required configuration: {config_key}")
 
 
-# Memory exceptions
-class MemoryError(OpsPilotError):
+# Memory/storage exceptions (named StorageError to avoid shadowing Python's built-in MemoryError)
+class StorageError(OpsPilotError):
     """Base exception for memory/storage errors."""
     pass
 
 
-class RedisConnectionError(MemoryError):
+class RedisConnectionError(StorageError):
     """Raised when Redis connection fails."""
 
     def __init__(self, host: str, port: int, reason: str):
@@ -184,7 +184,7 @@ class RedisConnectionError(MemoryError):
         )
 
 
-class MemoryWriteError(MemoryError):
+class MemoryWriteError(StorageError):
     """Raised when writing to memory fails."""
 
     def __init__(self, reason: str):
@@ -192,7 +192,7 @@ class MemoryWriteError(MemoryError):
         super().__init__("Failed to write to memory", reason)
 
 
-class MemoryReadError(MemoryError):
+class MemoryReadError(StorageError):
     """Raised when reading from memory fails."""
 
     def __init__(self, reason: str):

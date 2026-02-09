@@ -7,6 +7,8 @@ import os
 from typing import Dict, List, Optional
 from datetime import datetime
 
+from opspilot.exceptions import RedisConnectionError as OpsPilotRedisError
+
 try:
     import redis
     REDIS_AVAILABLE = True
@@ -319,4 +321,7 @@ def get_memory_backend(
         from opspilot.memory import load_memory, save_memory
         return None  # Use existing file-based system
 
-    raise RuntimeError("Redis unavailable and fallback disabled")
+    raise OpsPilotRedisError(
+        host=redis_host, port=redis_port,
+        reason="Redis unavailable and fallback disabled"
+    )

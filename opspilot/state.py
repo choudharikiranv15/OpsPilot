@@ -11,6 +11,7 @@ class AgentState:
 
     evidence: Dict[str, Any] = field(default_factory=dict)
     suggestions: List[Dict[str, Any]] = field(default_factory=list)
+    checks_remaining: List[str] = field(default_factory=list)
 
     iteration: int = 0
     max_iterations: int = 2

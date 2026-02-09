@@ -5,8 +5,7 @@ from opspilot.graph.nodes import (
     verifier_node,
     fixer_node,
 )
-
-CONFIDENCE_THRESHOLD = 0.6
+from opspilot.constants import CONFIDENCE_THRESHOLD
 
 
 def run_agent(state: AgentState) -> AgentState:
