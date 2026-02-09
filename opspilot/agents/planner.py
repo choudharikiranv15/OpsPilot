@@ -1,6 +1,12 @@
 from typing import Dict
 import json
 from opspilot.utils.llm import call_llama, safe_json_parse
+from opspilot.constants import (
+    BUILD_ERROR_TRUNCATE_LIMIT,
+    LOG_TRUNCATE_LIMIT,
+    DEPENDENCY_LIMIT,
+    STRUCTURE_TRUNCATE_LIMIT,
+)
 
 
 SYSTEM_PROMPT = """
@@ -40,16 +46,15 @@ def plan(context: Dict) -> Dict:
     # Prioritize build errors if present
     build_errors = context.get("build_errors")
     if build_errors:
-        # Truncate but keep enough to see the error details
-        build_errors = build_errors[-4000:]
+        build_errors = build_errors[-BUILD_ERROR_TRUNCATE_LIMIT:]
 
     summarized_context = {
-        "build_errors": build_errors,  # Prioritize build errors
-        "logs": context.get("logs", "")[:2000] if context.get("logs") else None,
+        "build_errors": build_errors,
+        "logs": context.get("logs", "")[:LOG_TRUNCATE_LIMIT] if context.get("logs") else None,
         "env_vars": list(context.get("env", {}).keys()),
         "docker_present": bool(context.get("docker")),
-        "dependencies": context.get("dependencies", [])[:20],
-        "structure": str(context.get("structure", ""))[:1000],
+        "dependencies": context.get("dependencies", [])[:DEPENDENCY_LIMIT],
+        "structure": str(context.get("structure", ""))[:STRUCTURE_TRUNCATE_LIMIT],
     }
 
     # Customize prompt based on available context
