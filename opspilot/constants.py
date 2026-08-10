@@ -19,11 +19,12 @@ LLM_RETRY_MULTIPLIER = 2.0  # exponential backoff multiplier
 CIRCUIT_BREAKER_THRESHOLD = 5  # failures before opening circuit
 CIRCUIT_BREAKER_TIMEOUT = 60  # seconds before trying again
 
-# Truncation limits (in characters)
-LOG_TRUNCATE_LIMIT = 5000
-BUILD_ERROR_TRUNCATE_LIMIT = 4000
-STRUCTURE_TRUNCATE_LIMIT = 1000
-DEPENDENCY_LIMIT = 20
+# Truncation limits (in characters) - configurable for large codebases
+LOG_TRUNCATE_LIMIT = 10000  # Increased from 5000
+BUILD_ERROR_TRUNCATE_LIMIT = 8000  # Increased from 4000
+STRUCTURE_TRUNCATE_LIMIT = 2000  # Increased from 1000
+DEPENDENCY_LIMIT = 50  # Increased from 20
+MAX_FILES_SCAN = 1000  # New: Limit files to scan
 
 # LLM response limits
 LLM_MAX_TOKENS = 2000

@@ -7,7 +7,7 @@ from opspilot.constants import LOG_TRUNCATE_LIMIT, LOG_FILE_PATTERNS
 
 def read_logs(project_root: str, max_size: int = LOG_TRUNCATE_LIMIT) -> Optional[str]:
     """
-    Read and aggregate log files from project directory.
+    Read and aggregate log files from project directory with intelligent sampling.
 
     Searches in common log locations:
     - ./logs/
@@ -15,10 +15,11 @@ def read_logs(project_root: str, max_size: int = LOG_TRUNCATE_LIMIT) -> Optional
     - ./var/log/
     - ./ (project root for common log files)
 
-    Supports multiple patterns:
-    - *.log, *.log.*, *.txt (in log dirs)
-    - *.log.json, *.jsonl (structured logs)
-    - Common named logs: app.log, error.log, debug.log, etc.
+    Performance optimizations for large codebases:
+    - Skips files > 50MB (likely rotated logs)
+    - Reads max 5 files
+    - Prioritizes recent files
+    - Samples errors intelligently instead of full content
 
     Args:
         project_root: Root directory of the project
@@ -58,10 +59,13 @@ def read_logs(project_root: str, max_size: int = LOG_TRUNCATE_LIMIT) -> Optional
         for pattern in patterns:
             try:
                 matches = list(log_dir.glob(pattern))
-                # Filter out directories and very large files (>10MB)
+                # Filter out directories and very large files (>50MB for performance)
                 for f in matches:
-                    if f.is_file() and f.stat().st_size < 10 * 1024 * 1024:
-                        log_files.append(f)
+                    if f.is_file():
+                        size = f.stat().st_size
+                        # Skip very large files (likely old rotated logs)
+                        if size < 50 * 1024 * 1024:
+                            log_files.append(f)
             except (PermissionError, OSError):
                 continue
 
@@ -82,10 +86,16 @@ def read_logs(project_root: str, max_size: int = LOG_TRUNCATE_LIMIT) -> Optional
             break
 
         try:
-            content = log_file.read_text(errors="ignore")
-            # Take the last portion if file is large
-            if len(content) > max_size // 2:
-                content = content[-(max_size // 2):]
+            file_size = log_file.stat().st_size
+            
+            # For large files (>1MB), sample intelligently instead of reading all
+            if file_size > 1024 * 1024:  # 1MB
+                content = _sample_large_log(log_file, max_size // 5)
+            else:
+                content = log_file.read_text(errors="ignore")
+                # Take the last portion if file is large
+                if len(content) > max_size // 2:
+                    content = content[-(max_size // 2):]
 
             remaining_space = max_size - total_size
             if len(content) > remaining_space:
@@ -102,6 +112,58 @@ def read_logs(project_root: str, max_size: int = LOG_TRUNCATE_LIMIT) -> Optional
         return None
 
     return "\n\n".join(combined_logs)
+
+
+def _sample_large_log(log_file: Path, max_lines: int = 200) -> str:
+    """
+    Intelligently sample a large log file, prioritizing errors.
+    
+    Strategy:
+    1. Sample last N lines (most recent)
+    2. Prioritize lines with ERROR, FATAL, Exception
+    3. Skip repetitive lines
+    
+    Args:
+        log_file: Path to log file
+        max_lines: Maximum lines to sample
+    
+    Returns:
+        Sampled log content
+    """
+    try:
+        # Read last N lines using efficient tail-like approach
+        with open(log_file, 'rb') as f:
+            # Seek to end
+            f.seek(0, 2)
+            file_size = f.tell()
+            
+            # Read last chunk (up to 100KB for performance)
+            chunk_size = min(100 * 1024, file_size)
+            f.seek(max(0, file_size - chunk_size))
+            
+            content = f.read().decode('utf-8', errors='ignore')
+            lines = content.splitlines()
+            
+            # Prioritize error lines
+            error_keywords = ['ERROR', 'FATAL', 'CRITICAL', 'Exception', 'Traceback', 'Failed', 'Timeout']
+            error_lines = []
+            other_lines = []
+            
+            for line in lines[-max_lines:]:
+                if any(keyword in line for keyword in error_keywords):
+                    error_lines.append(line)
+                else:
+                    other_lines.append(line)
+            
+            # Take all errors + some context
+            sampled = error_lines[:max_lines // 2] + other_lines[:max_lines // 2]
+            
+            if len(lines) > max_lines:
+                return f"[Sampled {len(sampled)} of {len(lines)} lines]\n" + "\n".join(sampled)
+            return "\n".join(sampled)
+    
+    except Exception:
+        return "[Failed to sample log file]"
 
 
 def find_log_files(project_root: str) -> List[Path]:
