@@ -341,7 +341,13 @@ class OpenRouterProvider(LLMProvider):
                 raise LLMResponseError("OpenRouter", error_msg)
 
             data = response.json()
-            return data["choices"][0]["message"]["content"]
+            choices = data.get("choices", [])
+            if not choices:
+                raise LLMResponseError("OpenRouter", "Empty choices in response")
+            content = choices[0].get("message", {}).get("content")
+            if not content:
+                raise LLMResponseError("OpenRouter", "Missing content in response")
+            return content
 
         except requests.Timeout:
             raise LLMTimeoutError("OpenRouter", self.timeout)
@@ -452,7 +458,13 @@ class AnthropicProvider(LLMProvider):
             response.raise_for_status()
 
             data = response.json()
-            return data["content"][0]["text"]
+            content_blocks = data.get("content", [])
+            if not content_blocks:
+                raise LLMResponseError("Anthropic", "Empty content in response")
+            text = content_blocks[0].get("text")
+            if not text:
+                raise LLMResponseError("Anthropic", "Missing text in response")
+            return text
 
         except requests.Timeout:
             raise LLMTimeoutError("Anthropic", self.timeout)
@@ -477,7 +489,12 @@ class GeminiProvider(LLMProvider):
         if not self.api_key:
             raise LLMError("Google API key not set", "Set GOOGLE_API_KEY environment variable")
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+
+        headers = {
+            "x-goog-api-key": self.api_key,
+            "Content-Type": "application/json",
+        }
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -488,7 +505,9 @@ class GeminiProvider(LLMProvider):
         }
 
         try:
-            response = requests.post(url, json=payload, timeout=self.timeout)
+            response = requests.post(
+                url, headers=headers, json=payload, timeout=self.timeout
+            )
 
             if response.status_code == 429:
                 raise LLMRateLimitError("Gemini")
@@ -502,7 +521,13 @@ class GeminiProvider(LLMProvider):
                 raise LLMResponseError("Gemini", error_msg)
 
             data = response.json()
-            return data["candidates"][0]["content"]["parts"][0]["text"]
+            candidates = data.get("candidates", [])
+            if not candidates:
+                raise LLMResponseError("Gemini", "Empty candidates in response")
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if not parts:
+                raise LLMResponseError("Gemini", "Empty parts in response")
+            return parts[0].get("text", "")
 
         except requests.Timeout:
             raise LLMTimeoutError("Gemini", self.timeout)
@@ -605,7 +630,6 @@ class LLMRouter:
 
                 # Success! Remember this provider
                 self.last_successful_provider = provider
-                print(f"[LLM] Using {provider.__class__.__name__}")
                 return result
 
             except LLMRateLimitError as e:

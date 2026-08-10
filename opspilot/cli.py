@@ -22,7 +22,6 @@ from opspilot.state import AgentState
 from opspilot.constants import VERSION, CONFIDENCE_THRESHOLD, BUILD_CMD_TIMEOUT
 from opspilot.logger import setup_logging, get_logger
 from opspilot.config import load_config
-from opspilot.context import collect_context
 from opspilot.context.project import scan_project_tree
 from opspilot.context.logs import read_logs
 from opspilot.context.env import read_env
@@ -41,9 +40,6 @@ from opspilot.agents.remediation import generate_remediation_plan, format_remedi
 from opspilot.diffs.redis import redis_timeout_diff, redis_pooling_diff
 from opspilot.memory import save_memory
 from opspilot.memory import find_similar_issues
-from opspilot.graph.engine import run_agent
-
-
 
 # Load environment variables from .env file (searches in current directory and parents)
 load_dotenv(verbose=False, override=False)  # Don't override existing env vars
@@ -333,9 +329,10 @@ def analyze(
         raise typer.BadParameter("Mode must be quick, deep, or explain")
 
     try:
-        # Check LLM availability (any provider)
-        if not check_any_llm_available():
-            router = get_llm_router()
+        project_root = str(Path.cwd())
+
+        # LLM required for quick/deep modes only
+        if mode != "explain" and not check_any_llm_available():
             console.print(
                 "[red]ERROR:[/red] No LLM provider available.\n\n"
                 "[bold]Setup at least one FREE/open-source provider:[/bold]\n\n"
@@ -354,12 +351,12 @@ def analyze(
             )
             raise typer.Exit(code=1)
 
-        # Show which provider will be used
-        router = get_llm_router()
-        available = router.get_available_providers()
-        console.print(f"[dim]LLM providers available: {', '.join(available)}[/dim]")
-
-        project_root = str(Path.cwd())
+        if mode != "explain":
+            router = get_llm_router()
+            available = router.get_available_providers()
+            console.print(f"[dim]LLM providers available: {', '.join(available)}[/dim]")
+        else:
+            console.print("[dim]Explain mode: context gathering only (no LLM)[/dim]")
 
         past = find_similar_issues(project_root)
         if past:
@@ -370,20 +367,6 @@ def analyze(
                     f"- {p.get('hypothesis', 'Unknown')} (confidence {p.get('confidence', 0.0)})")
 
         state = AgentState(project_root=project_root)
-
-        if mode == "explain":
-            # No LLM at all
-            state.context = collect_context(project_root)
-            state.evidence = collect_evidence(state.context)
-
-        elif mode == "quick":
-            # One planner pass only
-            state.max_iterations = 1
-            state = run_agent(state)
-
-        elif mode == "deep":
-            # Full agent loop (default)
-            state = run_agent(state)
 
         config = load_config(project_root)
 
@@ -423,11 +406,13 @@ def analyze(
 
         elif build_cmd:
             import subprocess
+            import shlex
             console.print(f"[cyan]Running build command: {build_cmd}[/cyan]")
             try:
+                cmd_args = shlex.split(build_cmd)
                 result = subprocess.run(
-                    build_cmd,
-                    shell=True,
+                    cmd_args,
+                    shell=False,
                     capture_output=True,
                     text=True,
                     timeout=BUILD_CMD_TIMEOUT,
@@ -471,30 +456,8 @@ def analyze(
         console.print(
             f"• Dependencies detected: {len(state.context['dependencies'])}")
 
-        console.print("[cyan]Planner Agent reasoning...[/cyan]")
-        if debug:
-            console.print("[dim][debug] entering planner[/dim]")
-
-        with console.status("[cyan]Analyzing project context with LLM...[/cyan]", spinner="dots"):
-            plan_result = plan(state.context)
-        if debug:
-            console.print("[dim][debug] planner done[/dim]")
-
-        state.hypothesis = plan_result.get("hypothesis")
-        state.confidence = plan_result.get("confidence")
-        state.checks_remaining = plan_result.get("required_checks", [])
-
-        if "error" in plan_result:
-            console.print("[bold red]⚠ Planner Error:[/bold red]", plan_result["error"])
-
-        console.print("[bold yellow]Hypothesis:[/bold yellow]", state.hypothesis)
-        console.print("[bold yellow]Confidence:[/bold yellow]", state.confidence)
-
-        if debug:
-            console.print("[dim][debug] collecting evidence[/dim]")
-
-        # Use centralized evidence collection with pattern analysis
         evidence = collect_evidence(state.context)
+        state.evidence = evidence
 
         if debug:
             console.print("[dim][debug] evidence done[/dim]")
@@ -509,7 +472,6 @@ def analyze(
                 formatted_deployment = format_deployment_analysis(deployment_info)
                 console.print(formatted_deployment)
 
-                # Correlate with error timeline if available
                 if evidence.get("timeline") and evidence["timeline"].get("first_seen"):
                     correlation = correlate_with_error_timeline(
                         deployment_info.get("commits", []),
@@ -541,13 +503,47 @@ def analyze(
             if evidence.get("error_count"):
                 console.print(f"[white]Total Errors: {evidence['error_count']}[/white]")
 
-            # Show timeline if available
             if evidence.get("timeline"):
                 timeline = evidence["timeline"]
                 console.print(f"[white]First Seen: {timeline.get('first_seen', 'unknown')}[/white]")
                 console.print(f"[white]Occurrences: {timeline.get('total_occurrences', 0)}[/white]")
 
         console.print("\n[cyan]Evidence collected:[/cyan]", evidence)
+
+        if mode == "explain":
+            result = {
+                "project": project_root,
+                "mode": "explain",
+                "context": state.context,
+                "evidence": evidence,
+                "timestamp": datetime.now().isoformat(),
+            }
+            if output_file:
+                save_report(output_file, result, console)
+            if output_json:
+                print(json.dumps(result, indent=2, default=str))
+            console.print("\n[bold green]Context summary complete[/bold green]")
+            console.print("[dim]Use --mode quick or --mode deep for LLM analysis[/dim]")
+            return
+
+        console.print("[cyan]Planner Agent reasoning...[/cyan]")
+        if debug:
+            console.print("[dim][debug] entering planner[/dim]")
+
+        with console.status("[cyan]Analyzing project context with LLM...[/cyan]", spinner="dots"):
+            plan_result = plan(state.context)
+        if debug:
+            console.print("[dim][debug] planner done[/dim]")
+
+        state.hypothesis = plan_result.get("hypothesis")
+        state.confidence = plan_result.get("confidence")
+        state.checks_remaining = plan_result.get("required_checks", [])
+
+        if "error" in plan_result:
+            console.print("[bold red]⚠ Planner Error:[/bold red]", plan_result["error"])
+
+        console.print("[bold yellow]Hypothesis:[/bold yellow]", state.hypothesis)
+        console.print("[bold yellow]Confidence:[/bold yellow]", state.confidence)
 
         verdict = None
         if state.hypothesis and evidence:

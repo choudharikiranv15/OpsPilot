@@ -2,8 +2,6 @@
 include README.md
 include LICENSE
 include ARCHITECTURE.md
-include FREE_LLM_SETUP.md
-include ENV_SETUP.md
 include DEPLOYMENT.md
 
 # Include configuration templates

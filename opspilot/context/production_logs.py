@@ -21,7 +21,7 @@ def fetch_logs_from_url(url: str, timeout: int = 30) -> Optional[str]:
         response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         return response.text
-    except requests.RequestException as e:
+    except Exception as e:
         print(f"Failed to fetch logs from {url}: {e}")
         return None
 

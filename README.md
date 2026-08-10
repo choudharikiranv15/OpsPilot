@@ -334,7 +334,7 @@ OpsPilot-AI maintains Redis-based memory of past issues:
 - **AI Pattern**: Multi-agent agentic architecture with 4 specialized agents
 - **Reasoning**: Evidence-based decision making with P0/P1/P2/P3 severity classification
 - **Prompt Engineering**: Robust JSON extraction with retry logic and safe parsing
-- **Testing**: pytest with 45+ unit tests and integration test coverage
+- **Testing**: pytest with 58 unit tests across LLM providers, pattern analysis, production logs, and remediation
 
 ---
 
@@ -366,7 +366,7 @@ opspilot/
 ├── diffs/                     # Domain-specific fix templates
 ├── memory.py                  # File-based memory (fallback)
 ├── memory_redis.py            # Redis-based memory with user isolation
-├── tests/                     # Comprehensive test suite (45+ tests)
+├── tests/                     # Test suite (58 tests)
 │   ├── test_pattern_analysis.py
 │   ├── test_production_logs.py
 │   ├── test_remediation.py
@@ -429,7 +429,7 @@ pytest tests/test_llm_providers.py
 ## 🗺️ Roadmap
 
 - [x] Multi-provider LLM support with automatic fallback
-- [x] Comprehensive test coverage (45+ tests)
+- [x] Comprehensive test coverage (58 tests)
 - [x] Redis-based memory with user isolation
 - [x] Production log fetching (S3, K8s, CloudWatch)
 - [x] Deployment correlation analysis

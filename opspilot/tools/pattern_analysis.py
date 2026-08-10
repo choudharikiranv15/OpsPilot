@@ -60,7 +60,8 @@ def _extract_exceptions(logs: str) -> List[str]:
 
 def _extract_database_errors(logs: str) -> List[str]:
     """Extract database-related errors."""
-    db_patterns = [
+    driver_pattern = r'(psycopg2\.\w+|redis\.exceptions\.\w+|mysql\.connector\.\w+|pymongo\.\w+)'
+    generic_patterns = [
         r'(connection refused|connection timeout|connection lost)',
         r'(deadlock|lock timeout)',
         r'(too many connections)',
@@ -68,11 +69,18 @@ def _extract_database_errors(logs: str) -> List[str]:
     ]
 
     db_errors = []
-    for pattern in db_patterns:
-        matches = re.findall(pattern, logs, re.IGNORECASE)
-        db_errors.extend(matches)
+    for line in logs.splitlines():
+        driver_match = re.search(driver_pattern, line, re.IGNORECASE)
+        if driver_match:
+            db_errors.append(driver_match.group(1))
+            continue
+        for pattern in generic_patterns:
+            match = re.search(pattern, line, re.IGNORECASE)
+            if match:
+                db_errors.append(match.group(1))
+                break
 
-    return list(set(db_errors))[:10]
+    return list(dict.fromkeys(db_errors))[:10]
 
 
 def _extract_timeout_errors(logs: str) -> int:
@@ -184,7 +192,10 @@ def build_error_timeline(logs: str) -> Dict:
     timestamps = re.findall(timestamp_pattern, logs)
 
     if not timestamps:
-        return {}
+        return {
+            "first_seen": "unknown",
+            "last_seen": "unknown",
+        }
 
     return {
         "first_seen": timestamps[0] if timestamps else "unknown",
