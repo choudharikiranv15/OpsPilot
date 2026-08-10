@@ -50,6 +50,59 @@ console = Console()
 __version__ = VERSION
 
 
+@app.command()
+def troubleshoot(
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show detailed phase-by-phase analysis"
+    ),
+    output_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Output machine-readable JSON"
+    ),
+):
+    """
+    Structured troubleshooting following real SRE debugging patterns.
+    
+    Workflow phases:
+      1. Logs → What broke (symptoms)
+      2. Recent Changes → When did it break (timeline)
+      3. Similar Incidents → Has this happened before (history)
+      4. Stack Trace → Where did it break (location)
+      5. Environment → Configuration issues
+      6. Dependencies → Version conflicts
+      7. Resources → System limits
+      8. External Services → Third-party failures
+      9. Root Cause → Hypothesis
+      10. Remediation → Action plan
+    
+    Examples:
+      opspilot troubleshoot              # Quick summary
+      opspilot troubleshoot --verbose    # Detailed analysis
+      opspilot troubleshoot --json       # JSON output
+    """
+    from opspilot.commands.troubleshoot import troubleshoot_command
+    
+    try:
+        troubleshoot_command(
+            project_root=str(Path.cwd()),
+            verbose=verbose,
+            output_json=output_json
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Troubleshooting interrupted by user[/yellow]")
+        raise typer.Exit(code=130)
+    except Exception as e:
+        console.print(f"[red]ERROR:[/red] {e}")
+        if verbose:
+            import traceback
+            console.print(traceback.format_exc())
+        raise typer.Exit(code=1)
+
+
 def version_callback(value: bool):
     if value:
         console.print(f"OpsPilot version {__version__}")
